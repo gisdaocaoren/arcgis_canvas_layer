@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
+    <title>数据可视化Demo</title>
+    <link rel="stylesheet" href="https://js.arcgis.com/3.16/esri/css/esri.css">
+
+    <style>
+        html,body {
+            width:100%;
+            height:100%;
+            margin: 0;
+            padding: 0px 0 0 0;
+            overflow: hidden;
+        }
+
+        #mapCanvas {
+            padding:0;
+        }
+
+        @font-face {
+            font-family: 'Digital7Mono';
+            src: url('fonts/digital-7-webfont.eot');
+            src: url('fonts/digital-7-webfont.eot?#iefix') format('embedded-opentype'),
+            url('fonts/digital-7-webfont.woff') format('woff'),
+            url('fonts/digital-7-webfont.ttf') format('truetype'),
+            url('fonts/digital-7-webfont.svg#Digital7Mono') format('svg');
+            font-weight: normal;
+            font-style: normal;
+
+        }
+
+        @font-face {
+            font-family: 'VegurLight';
+            src: url('fonts/vegur-l_0602-webfont.eot');
+            src: url('fonts/vegur-l_0602-webfont.eot?#iefix') format('embedded-opentype'),
+            url('fonts/vegur-l_0602-webfont.woff') format('woff'),
+            url('fonts/vegur-l_0602-webfont.ttf') format('truetype'),
+            url('fonts/vegur-l_0602-webfont.svg#VegurLight') format('svg');
+            font-weight: normal;
+            font-style: normal;
+
+        }
+
+        @font-face {
+            font-family: 'VegurRegular';
+            src: url('fonts/vegur-r_0.602-webfont.eot');
+            src: url('fonts/vegur-r_0.602-webfont.eot?#iefix') format('embedded-opentype'),
+            url('fonts/vegur-r_0.602-webfont.woff') format('woff'),
+            url('fonts/vegur-r_0.602-webfont.ttf') format('truetype'),
+            url('fonts/vegur-r_0.602-webfont.svg#VegurRegular') format('svg');
+            font-weight: normal;
+            font-style: normal;
+
+        }
+
+        @font-face {
+            font-family: 'VegurBold';
+            src: url('fonts/vegur-b_0.602-webfont.eot');
+            src: url('fonts/vegur-b_0.602-webfont.eot?#iefix') format('embedded-opentype'),
+            url('fonts/vegur-b_0.602-webfont.woff') format('woff'),
+            url('fonts/vegur-b_0.602-webfont.ttf') format('truetype'),
+            url('fonts/vegur-b_0.602-webfont.svg#VegurBold') format('svg');
+            font-weight: normal;
+            font-style: normal;
+
+        }
+        svg{
+            position: absolute;
+            bottom: 0;
+        }
+        g text{
+            fill: white;
+        }
+
+        .bar {
+            fill: rgba(70, 130, 180, 0.65);
+            stroke-opacity: 0;
+        }
+
+        /*.bar:hover {*/
+        /*fill: brown;*/
+        /*}*/
+        .highLight {
+            fill: brown;
+        }
+
+        .axis {
+            font: 10px sans-serif;
+        }
+
+        .axis path,
+        .axis line {
+            fill: none;
+            stroke: #000;
+            shape-rendering: crispEdges;
+        }
+
+        .x.axis path {
+            display: none;
+        }
+
+    </style>
+
+    <script>
+        var dojoConfig = {
+            "gfxRenderer": "canvas",   //以canvas方式绘制图层
+            "isDebug": true,
+            "parseOnLoad": true,
+            paths: {
+                plugins: location.pathname.replace(/\/[^/]+$/, "") + "/plugins"
+            }
+        };
+
+    </script>
+    <!--<script src="./direction.js"></script>-->
+    <script src="lib/d3.min.js"></script>
+    <script src="plugins/Bar.js"></script>
+    <script src="https://js.arcgis.com/3.16/"></script>
+    <script>
+        var map, directionLayer,userLayer,bar;
+        var canvasSupport;
+
+        require([
+            "esri/map", "esri/layers/ArcGISTiledMapServiceLayer",
+            "esri/domUtils", "esri/request",
+            "dojo/parser", "dojo/number", "dojo/json", "dojo/dom",
+            "dijit/registry", "plugins/RasterLayer","plugins/Direction","plugins/User","esri/layers/WebTiledLayer",
+            "esri/config",
+            "dojo/domReady!"
+        ], function(
+                Map, ArcGISTiledMapServiceLayer,
+                domUtils, esriRequest,
+                parser, number, JSON, dom,
+                registry, RasterLayer,Direction, User,WebTiledLayer, esriConfig
+        ){
+            parser.parse();
+            canvasSupport = supports_canvas();
+
+            map = new Map("mapCanvas", {
+                center: [105.076, 39.132],
+                zoom: 5
+            });
+
+            var barLoaded = false;
+            map.on("load", mapLoaded);
+            map.addLayer(new ArcGISTiledMapServiceLayer("http://map.geoq.cn/ArcGIS/rest/services/ChinaOnlineStreetPurplishBlue/MapServer"));
+
+            function mapLoaded() {
+                if(!canvasSupport){
+                    dom.byId("mapCanvas").innerHTML = "This browser doesn't support canvas. Visit <a target='_blank' href='http://www.caniuse.com/#search=canvas'>caniuse.com</a> for supported browsers";
+                    return;
+                }
+                directionLayer = new RasterLayer(null, {
+                    opacity: 0.95
+                });
+
+                userLayer = new RasterLayer(null,{opacity:0.95});
+                map.addLayer(directionLayer);
+                map.addLayer(userLayer);
+
+                map.on("extent-change", redraw);
+                map.on("resize", function(){}); 
+
+                var userDataLoaded = false;
+                var directionDataLoaded = false; 
+                var layersRequest = esriRequest({ 
+                    url:"data/direction_2016_04_18.json",
+                    content: {},
+                    handleAs: "json",
+                    callbackParamName: "callback"
+                });
+                layersRequest.then(function(response) {
+                    bar = new Bar(response.data);
+                    barLoaded = true;
+                    direction = new Direction({ canvas: directionLayer._element, data: response.data,map:map});
+                    directionDataLoaded = true;
+                    if(userDataLoaded&&directionDataLoaded){
+                        redrawDirectionLayer();
+                        redrawUserLayer();
+                        if(barLoaded){
+                            bar.renderer(map.width,150);
+                        }
+                    }
+                }, function(error) {
+                    console.log("Error: ", error.message);
+                });
+ 
+                esriRequest({ 
+                    url:"data/user_2016_04_18.json",
+                    content: {},
+                    handleAs: "json",
+                    callbackParamName: "callback"
+                }).then(function(response) {
+                    user = new User({ canvas: userLayer._element, data: response.data,map:map});
+                    userDataLoaded = true;
+                    if(userDataLoaded&&directionDataLoaded){
+                        redrawDirectionLayer();
+                        redrawUserLayer();
+                        if(barLoaded){
+                            bar.renderer(map.width,150);
+                        }
+                    }
+                }, function(error) {
+                    console.log("Error: ", error.message);
+                });
+
+            }
+
+            function supports_canvas() {
+                return !!document.createElement("canvas").getContext;
+            }
+
+            function redraw(){ 
+                if(barLoaded){
+                    bar.renderer(map.width,150);
+                }
+            }
+
+            function redrawDirectionLayer(){
+                directionLayer._element.width = map.width;
+                directionLayer._element.height = map.height;
+                direction.stop();
+                var extent = map.geographicExtent;
+                setTimeout(function(){
+                    direction.start(
+                            [[0,0],[map.width, map.height]],
+                            map.width,
+                            map.height,
+                            [[extent.xmin, extent.ymin],[extent.xmax, extent.ymax]]
+                    );
+                },10);
+            }
+
+            function redrawUserLayer(){
+                userLayer._element.width = map.width;
+                userLayer._element.height = map.height;
+                user.stop();
+                var extent = map.geographicExtent;
+                setTimeout(function(){
+                    user.start(
+                            [[0,0],[map.width, map.height]],
+                            map.width,
+                            map.height,
+                            [[extent.xmin, extent.ymin],[extent.xmax, extent.ymax]]
+                    );
+                },10);
+            }
+        });
+    </script>
+</head>
+
+<body class="">
+    <div id="mapCanvas" style="height:100%;"></div>
+    <div  style="position: absolute; top:20px;z-index: 99;left: 50%;">
+        <span style="font-family: 微软雅黑;font-size: 36px;width:400px;font-weight: bold;margin-left: -150px;color:white;">
+            数据可视化Demo
+        </span>
+    </div>
+    <div  style="position: absolute; right: 50px;z-index: 99;top:20px;">
+        <span id="time" style="text-align: center;color: #ff5a5f;font-family: Digital7Mono;font-size: 36pt;">
+        </span>
+    </div>
+</body>
+</html>
